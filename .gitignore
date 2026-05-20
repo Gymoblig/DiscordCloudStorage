@@ -2,11 +2,4 @@ __pycache__/
 *.pyc
 *.pyo
 *.spec
-build/
-dist/
-.venv/
-venv/
 token.txt
-downloads/
-.DS_Store
-Thumbs.db
