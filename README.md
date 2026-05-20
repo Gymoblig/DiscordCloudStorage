@@ -1,98 +1,91 @@
-# Discord Cloud Storage Bot - Setup Guide
+# Discord Cloud Storage
 
-Welcome legend! Here's how to set up your personal Discord Cloud Storage Bot (no coding required).
+Use a Discord text channel as personal cloud storage. Files larger than the
+Discord upload limit are automatically chunked on upload and reassembled on
+download. The UI and the bot run together in one Python process.
 
-This version uses a .EXE file, so you don't need to install Python or anything extra. Just follow the steps carefully!
+## Features
 
-# Step 1: Download the Bot
-- Go to the GitHub Releases page of this project.
-- Find the latest release.
-- Under "Assets", download the provided ZIP file (it will contain a .exe file).
-- Extract the ZIP file somewhere safe on your computer (like Desktop or Documents).
+- Sleek black & white CustomTkinter UI with a grid of file cards
+- Drag & drop files anywhere on the window to upload
+- Automatic chunking (default 25 MB per chunk, Discord's bot file limit)
+- Metadata stored as a pinned JSON message in the same channel - nothing local,
+  recoverable on any device
+- Upload, download, delete, search, refresh
 
-# Step 2: Create Your Discord Bot
-- Go to https://discord.com/developers/applications
-- Click "New Application" → Give it a name (example: StorageBot)
-- In the application settings, click on "Bot" tab.
-- Click "Add Bot" → Confirm.
-- Under "Privileged Gateway Intents", ENABLE:
-  - Message Content Intent
-  - Server Members Intent
-- Click "Reset Token" → Copy the Bot Token (you'll need it soon).
+## Setup
 
-# Step 3: Invite Your Bot to Your Discord Server
-- Inside the Developer Portal, go to "OAuth2" → "URL Generator".
-- Under "Scopes", select:
-  - bot
-- Under "Bot Permissions", select:
-  - Send Messages
-  - Read Message History
-  - Manage Messages
-  - Attach Files
-- Copy the generated URL, open it in your browser.
-- Invite the bot to your server.
+### 1. Python
 
-# Step 4: Get Your Channel ID
-- In Discord, go to Settings → Advanced → Enable Developer Mode.
-- Right-click on the text channel where you want the bot to store files.
-- Click "Copy Channel ID".
-- Save it for later.
+Requires Python 3.10+. Install dependencies:
 
-# Step 5: Prepare Configuration Files
-Inside the same folder as your .exe file, create these two files:
+```
+pip install -r requirements.txt
+```
 
-1. token.txt
-   - Open Notepad.
-   - Paste your Discord Bot Token inside.
-   - Save the file as token.txt (plain text).
+On Windows the `tkinterdnd2` wheel ships with the required Tcl extension. On
+Linux you may also need: `sudo apt install python3-tk`.
 
-2. config.json
-   - Open Notepad again.
-   - Paste the following content:
+### 2. Discord bot
 
+1. Go to <https://discord.com/developers/applications>
+2. New Application -> give it a name (e.g. `StorageBot`)
+3. Open the **Bot** tab, click **Add Bot**
+4. Under **Privileged Gateway Intents** enable **Message Content Intent**
+5. Click **Reset Token** and copy the bot token
+
+### 3. Invite the bot
+
+In **OAuth2 -> URL Generator**:
+
+- Scopes: `bot`
+- Bot permissions: `Send Messages`, `Read Message History`, `Manage Messages`,
+  `Attach Files`
+
+Open the generated URL and add the bot to your server.
+
+### 4. Channel ID
+
+In Discord: Settings -> Advanced -> enable **Developer Mode**, then right-click
+your storage channel and choose **Copy Channel ID**.
+
+### 5. Config files
+
+Next to `main.py`:
+
+- `token.txt` - paste the bot token (single line, no quotes)
+- `config.json` - already provided as a template:
+
+```json
 {
-  "discord_channel_id": YOUR_CHANNEL_ID
+  "discord_channel_id": 123456789012345678,
+  "chunk_size_mb": 25
 }
+```
 
-- Replace YOUR_CHANNEL_ID with the actual channel ID you copied.
-- Save the file as config.json.
+### 6. Run
 
-Make sure both files are next to your .exe file!
+```
+python main.py
+```
 
-# Step 6: Run the Bot
-- Double-click the .exe file.
-- A window will open.
-- The bot will connect automatically to your Discord server and show your uploaded files.
+The UI starts and the bot logs in automatically. When the dot in the top right
+turns white the bot is connected.
 
-# Step 7: Use It!
-- Click the upload button to upload files.
-- Click the download button to download files.
-- Click the delete button to delete selected file.
-- The bot will automatically split large files into chunks if needed.
-- All your files will stay synced across devices through Discord!
+## Notes
 
-# Important Things to Know
-- The bot automatically saves file information (metadata) inside Discord, no files are kept locally.
-- Even if you change computers, the app will recover everything from the server.
-- Very large files (over Discord's limit) will be automatically chunked and uploaded safely.
+- Chunk size defaults to 25 MB (Discord's default upload limit for bots on
+  non-boosted servers). Drop to `8` for extra safety margin on old servers, or
+  raise to `50` / `100` if your server has Boost Level 2 / 3.
+- Metadata is stored as the only pinned message containing
+  `cloudstorage_metadata.json`. Don't delete the pin.
+- The token in `token.txt` stays on your machine. `.gitignore` excludes it.
 
-# Troubleshooting
+## Troubleshooting
 
-Problem: Bot does not show online
-- Make sure the token.txt file contains the correct bot token.
-- Make sure the bot has been invited to your server with the correct permissions.
-
-Problem: Missing config.json or token.txt
-- Double-check you created the two required files and saved them in the same folder as the .exe file.
-
-Problem: "No metadata file found" message
-- This is normal when starting for the first time. The app will automatically create the metadata file when you upload something.
-
-Problem: App closes instantly
-- Open the app from Command Prompt to see if there are any error messages.
-- Make sure token.txt and config.json exist and are correct.
-
-# You're All Set!
-Congrats, you just built your own Discord-powered Cloud Storage system!
-
-Enjoy your files anywhere, anytime, on any PC! 🔥
+- **Window opens but bot stays "Connecting..."** - check the token and that the
+  bot has been invited to the server with the right permissions.
+- **"Configured channel is not a text channel"** - double-check the channel ID
+  is the right one (text channel, not voice/category/forum).
+- **Upload errors at large files** - Discord rejects attachments above the
+  server's tier limit. Lower `chunk_size_mb` in `config.json`.
