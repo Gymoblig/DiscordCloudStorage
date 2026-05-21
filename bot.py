@@ -14,6 +14,7 @@ import discord
 
 from metadata import FileEntry, Metadata, load_metadata, save_metadata
 from storage import (
+    SAFETY_BYTES,
     chunk_size_bytes,
     count_chunks,
     iter_chunks,
@@ -57,10 +58,17 @@ class CloudBot:
                 if not isinstance(ch, discord.TextChannel):
                     raise RuntimeError("Configured channel is not a text channel")
                 self.channel = ch
-                self._status(f"Loading metadata from #{ch.name}...")
+
+                # Auto-detect server upload limit
+                server_limit = ch.guild.filesize_limit  # bytes
+                effective = min(self.chunk_size, server_limit - SAFETY_BYTES)
+                self.chunk_size = max(1, effective)
+                limit_mb = round(self.chunk_size / (1024 * 1024), 1)
+
+                self._status(f"Loading metadata from #{ch.name} (limit: {limit_mb} MB)...")
                 self.metadata, self._metadata_msg = await load_metadata(ch)
                 self._status(
-                    f"Connected as {self.client.user} - {len(self.metadata.files)} file(s)"
+                    f"Connected as {self.client.user} - {len(self.metadata.files)} file(s) - chunk limit {limit_mb} MB"
                 )
                 if self.on_ready:
                     self.on_ready()
@@ -132,15 +140,46 @@ class CloudBot:
             if on_progress:
                 on_progress(1, 1)
         else:
-            for idx, data in iter_chunks(local_path, self.chunk_size):
-                attachment = discord.File(io.BytesIO(data), filename=f"{name}.part{idx:04d}")
-                msg = await self.channel.send(
-                    content=f"`{file_id}` chunk {idx + 1}/{total} - {name}",
-                    file=attachment,
-                )
-                chunk_msg_ids.append(msg.id)
-                if on_progress:
-                    on_progress(idx + 1, total)
+            current_chunk_size = self.chunk_size
+            for idx, data in iter_chunks(local_path, current_chunk_size):
+                try:
+                    attachment = discord.File(io.BytesIO(data), filename=f"{name}.part{idx:04d}")
+                    msg = await self.channel.send(
+                        content=f"`{file_id}` chunk {idx + 1}/{total} - {name}",
+                        file=attachment,
+                    )
+                except discord.HTTPException as exc:
+                    if exc.status == 413 and current_chunk_size > 1024 * 1024:
+                        # Server rejected size — halve it and re-chunk from scratch
+                        current_chunk_size = current_chunk_size // 2
+                        self.chunk_size = current_chunk_size
+                        limit_mb = round(current_chunk_size / (1024 * 1024), 1)
+                        self._status(f"Limit hit, retrying at {limit_mb} MB chunks...")
+                        # Delete already-sent chunks
+                        for mid in chunk_msg_ids:
+                            try:
+                                m = await self.channel.fetch_message(mid)
+                                await m.delete()
+                            except Exception:
+                                pass
+                        chunk_msg_ids.clear()
+                        # Re-upload with smaller chunks
+                        total = count_chunks(size, current_chunk_size)
+                        for idx2, data2 in iter_chunks(local_path, current_chunk_size):
+                            att = discord.File(io.BytesIO(data2), filename=f"{name}.part{idx2:04d}")
+                            msg = await self.channel.send(
+                                content=f"`{file_id}` chunk {idx2 + 1}/{total} - {name}",
+                                file=att,
+                            )
+                            chunk_msg_ids.append(msg.id)
+                            if on_progress:
+                                on_progress(idx2 + 1, total)
+                        break
+                    raise
+                else:
+                    chunk_msg_ids.append(msg.id)
+                    if on_progress:
+                        on_progress(idx + 1, total)
 
         async with self._write_lock:
             entry = FileEntry(
